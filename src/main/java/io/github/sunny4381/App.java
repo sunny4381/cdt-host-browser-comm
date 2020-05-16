@@ -10,13 +10,10 @@ import com.github.kklisura.cdt.launch.ChromeArguments;
 import com.github.kklisura.cdt.launch.ChromeLauncher;
 import com.github.kklisura.cdt.protocol.commands.*;
 import com.github.kklisura.cdt.protocol.commands.Runtime;
-import com.github.kklisura.cdt.protocol.support.types.EventListener;
-import com.github.kklisura.cdt.protocol.types.css.CSSStyleSheetHeader;
 import com.github.kklisura.cdt.protocol.types.page.Navigate;
 import com.github.kklisura.cdt.protocol.types.runtime.ExecutionContextDescription;
 import com.github.kklisura.cdt.services.ChromeDevToolsService;
 import com.github.kklisura.cdt.services.ChromeService;
-import com.github.kklisura.cdt.services.types.ChromeTab;
 
 import java.util.concurrent.Callable;
 
@@ -42,7 +39,7 @@ public class App implements Callable<Integer> {
 
     public Integer call() throws Exception {
         try (ChromeLauncher launcher = new ChromeLauncher()) {
-            final ChromeArguments.Builder argumentsBuilder = ChromeArguments.defaults(this.headless);
+            final var argumentsBuilder = ChromeArguments.defaults(this.headless);
             argumentsBuilder.additionalArguments("disable-backgrounding-occluded-windows", true);
             argumentsBuilder.additionalArguments("disable-breakpad", true);
             argumentsBuilder.additionalArguments("disable-dev-shm-usage", true);
@@ -57,7 +54,7 @@ public class App implements Callable<Integer> {
             argumentsBuilder.additionalArguments("use-mock-keychain", true);
 
             this.chrome = launcher.launch(argumentsBuilder.build());
-            final ChromeTab tab = this.chrome.getTabs().get(0);
+            final var tab = this.chrome.getTabs().get(0);
             this.chrome.createDevToolsService(tab);
             this.devTools = this.chrome.createDevToolsService(tab);
 
@@ -90,7 +87,7 @@ public class App implements Callable<Integer> {
             });
 
             this.css.onStyleSheetAdded((event) -> {
-                final CSSStyleSheetHeader header = event.getHeader();
+                final var header = event.getHeader();
                 System.out.println(header.getHasSourceURL());
             });
 
@@ -113,15 +110,15 @@ public class App implements Callable<Integer> {
     }
 
     private Navigate navigateAndWait(final String url, final long timeoutMillis) throws InterruptedException {
-        final Object lock = new Object();
-        final EventListener eventListener = this.page.onLoadEventFired(event -> {
+        final var lock = new Object();
+        final var eventListener = this.page.onLoadEventFired(event -> {
             synchronized (lock) {
                 lock.notify();
             }
         });
 
         try {
-            final Navigate navigate = this.page.navigate(url);
+            final var navigate = this.page.navigate(url);
             if (navigate == null) {
                 throw new RuntimeException("destination unreachable");
             }
@@ -145,7 +142,7 @@ public class App implements Callable<Integer> {
     }
 
     private void onHostCallback(final JsonNode command) {
-        final String name = command.get("name").asText();
+        final var name = command.get("name").asText();
         if (name == null || name.isEmpty()) {
             return;
         }
@@ -161,8 +158,8 @@ public class App implements Callable<Integer> {
     }
 
     private void openUrl(String url) {
-        final ChromeTab tab = this.chrome.createTab();
-        final ChromeDevToolsService devTools = this.chrome.createDevToolsService(tab);
+        final var tab = this.chrome.createTab();
+        final var devTools = this.chrome.createDevToolsService(tab);
         devTools.getRuntime().enable();
         devTools.getPage().enable();
         devTools.getPage().navigate(url);
