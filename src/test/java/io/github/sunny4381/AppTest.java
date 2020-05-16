@@ -4,11 +4,13 @@
 package io.github.sunny4381;
 
 import org.junit.Test;
+
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.*;
 
 public class AppTest {
-    @Test public void testAppHasAGreeting() {
-        App classUnderTest = new App();
-        assertNotNull("app should have a greeting", classUnderTest.getGreeting());
+    @Test
+    public void testCall() throws Exception {
+        assertThat(new App().call(), is(0));
     }
 }

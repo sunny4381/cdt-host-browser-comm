@@ -3,12 +3,175 @@
  */
 package io.github.sunny4381;
 
-public class App {
-    public String getGreeting() {
-        return "Hello world.";
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.kklisura.cdt.launch.ChromeArguments;
+import com.github.kklisura.cdt.launch.ChromeLauncher;
+import com.github.kklisura.cdt.protocol.commands.*;
+import com.github.kklisura.cdt.protocol.commands.Runtime;
+import com.github.kklisura.cdt.protocol.support.types.EventListener;
+import com.github.kklisura.cdt.protocol.types.css.CSSStyleSheetHeader;
+import com.github.kklisura.cdt.protocol.types.page.Navigate;
+import com.github.kklisura.cdt.protocol.types.runtime.ExecutionContextDescription;
+import com.github.kklisura.cdt.services.ChromeDevToolsService;
+import com.github.kklisura.cdt.services.ChromeService;
+import com.github.kklisura.cdt.services.types.ChromeTab;
+
+import java.util.concurrent.Callable;
+
+public class App implements Callable<Integer> {
+    private static String URL = "http://sunny4381.github.io/studies/call_host.html";
+
+    private boolean headless = false;
+
+    private ChromeService chrome;
+    private ChromeDevToolsService devTools;
+    private Runtime runtime;
+    private Page page;
+    private Network network;
+    private DOM dom;
+    private CSS css;
+    private ExecutionContextDescription currentContext;
+    private final Object applicationWait = new Object();
+    private volatile boolean applicationDone = false;
+
+    public static void main(String[] args) throws Exception {
+        System.exit(new App().call());
     }
 
-    public static void main(String[] args) {
-        System.out.println(new App().getGreeting());
+    public Integer call() throws Exception {
+        try (ChromeLauncher launcher = new ChromeLauncher()) {
+            final ChromeArguments.Builder argumentsBuilder = ChromeArguments.defaults(this.headless);
+            argumentsBuilder.additionalArguments("disable-backgrounding-occluded-windows", true);
+            argumentsBuilder.additionalArguments("disable-breakpad", true);
+            argumentsBuilder.additionalArguments("disable-dev-shm-usage", true);
+            argumentsBuilder.additionalArguments("disable-features", "site-per-process,TranslateUI");
+            argumentsBuilder.additionalArguments("disable-ipc-flooding-protection", true);
+            argumentsBuilder.additionalArguments("disable-renderer-backgrounding", true);
+            argumentsBuilder.additionalArguments("disable-session-crashed-bubble", true);
+            argumentsBuilder.additionalArguments("enable-features", "NetworkService,NetworkServiceInProcess");
+            argumentsBuilder.additionalArguments("force-color-profile", "srgb");
+            argumentsBuilder.additionalArguments("keep-alive-for-test", true);
+            argumentsBuilder.additionalArguments("password-store", "basic");
+            argumentsBuilder.additionalArguments("use-mock-keychain", true);
+
+            this.chrome = launcher.launch(argumentsBuilder.build());
+            final ChromeTab tab = this.chrome.getTabs().get(0);
+            this.chrome.createDevToolsService(tab);
+            this.devTools = this.chrome.createDevToolsService(tab);
+
+            this.runtime = this.devTools.getRuntime();
+            this.runtime.enable();
+
+            this.page = this.devTools.getPage();
+            this.page.enable();
+            this.page.setLifecycleEventsEnabled(true);
+
+            this.network = this.devTools.getNetwork();
+            this.network.enable();
+
+            this.dom = this.devTools.getDOM();
+            this.dom.enable();
+
+            this.css = this.devTools.getCSS();
+            this.css.enable();
+
+            this.runtime.onExecutionContextCreated(event -> {
+                currentContext = event.getContext();
+            });
+
+            this.runtime.addBinding("hostCallback");
+            this.runtime.onBindingCalled(event -> {
+                System.out.format("name = %s, payload = %s", event.getName(), event.getPayload());
+                if (event.getName().equals("hostCallback")) {
+                    onHostCallback(event.getPayload());
+                }
+            });
+
+            this.css.onStyleSheetAdded((event) -> {
+                final CSSStyleSheetHeader header = event.getHeader();
+                System.out.println(header.getHasSourceURL());
+            });
+
+            final Navigate navigate = navigateAndWait(URL, 10000);
+            if (navigate.getErrorText() != null && ! navigate.getErrorText().isEmpty()) {
+                System.out.println(navigate.getErrorText());
+                return 1;
+            }
+
+            while (! this.applicationDone) {
+                synchronized (this.applicationWait) {
+                    if (!this.applicationDone) {
+                        this.applicationWait.wait();
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    private Navigate navigateAndWait(final String url, final long timeoutMillis) throws InterruptedException {
+        final Object lock = new Object();
+        final EventListener eventListener = this.page.onLoadEventFired(event -> {
+            synchronized (lock) {
+                lock.notify();
+            }
+        });
+
+        try {
+            final Navigate navigate = this.page.navigate(url);
+            if (navigate == null) {
+                throw new RuntimeException("destination unreachable");
+            }
+
+            synchronized (lock) {
+                lock.wait(timeoutMillis);
+            }
+
+            return navigate;
+        } finally {
+            this.devTools.removeEventListener(eventListener);
+        }
+    }
+
+    private void onHostCallback(String payload) {
+        try {
+            onHostCallback(new ObjectMapper().readTree(payload));
+        } catch (JsonProcessingException ex) {
+            throw new UnsupportedOperationException("malformed command", ex);
+        }
+    }
+
+    private void onHostCallback(final JsonNode command) {
+        final String name = command.get("name").asText();
+        if (name == null || name.isEmpty()) {
+            return;
+        }
+
+        if (name.equals("quit")) {
+            quitApplication();
+            return;
+        }
+
+        if (name.equals("open")) {
+            openUrl(command.get("payload").get("url").asText());
+        }
+    }
+
+    private void openUrl(String url) {
+        final ChromeTab tab = this.chrome.createTab();
+        final ChromeDevToolsService devTools = this.chrome.createDevToolsService(tab);
+        devTools.getRuntime().enable();
+        devTools.getPage().enable();
+        devTools.getPage().navigate(url);
+    }
+
+    public void quitApplication() {
+        synchronized (this.applicationWait) {
+            this.applicationDone = true;
+            this.applicationWait.notifyAll();
+        }
     }
 }
