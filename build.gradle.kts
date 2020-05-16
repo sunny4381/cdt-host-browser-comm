@@ -24,6 +24,7 @@ dependencies {
     // This dependency is used by the application.
     implementation("com.google.guava:guava:28.2-jre")
     implementation("com.github.kklisura.cdt:cdt-java-client:2.1.0")
+    implementation("com.fasterxml.jackson.core:jackson-core:2.10.0")
 
     // Use JUnit test framework
     testImplementation("junit:junit:4.12")
